@@ -7,7 +7,9 @@ This script starts a graphical user interface for viewing and generating OSKAR s
 
 Requirements
 ------------
-PySide for Qt4 bindings, numpy, matplotlib.
+Qt4
+PySide 1.1 
+numpy, matplotlib (1.1)
 
 """
 
@@ -18,17 +20,34 @@ __author__  = "Danny Price"
 import sys
 from optparse import OptionParser
 
-from PySide import QtCore, QtGui
-
-import numpy as np
-
+try:
+    from PySide import QtCore, QtGui
+except:
+    print "Error: cannot load PySide. Please check your install."
+    exit()
+try:    
+    import numpy as np
+except:
+    print "Error: cannot load Numpy. Please check your install."
+    exit()
+    
 import matplotlib
-matplotlib.use('Qt4Agg')
-matplotlib.rcParams['backend.qt4']='PySide'
-from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-import matplotlib.gridspec as gridspec
-import pylab as plt
+if matplotlib.__version__ == '0.99.3':
+    print "Error: your matplotlib version is too old to run this. Please upgrade."
+    exit()
+else:
+    matplotlib.use('Qt4Agg')
+    matplotlib.rcParams['backend.qt4']='PySide'
+    from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
+    from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
+    from matplotlib.figure import Figure
+try:
+    import pylab as plt
+except:
+    print "Error: cannot load Pylab. Check your matplotlib install."
+    exit()
+
+from lib.antenna_config_utils import *
 
 class OskarGui(QtGui.QWidget):
     """ OSKAR GUI class
@@ -53,6 +72,7 @@ class OskarGui(QtGui.QWidget):
             height of the UI, in pixels. Defaults to 768px
         """
         
+        self.main_frame = QtGui.QWidget()    
         self.gen_gui = generateGui()
         
         # Create buttons/widgets
@@ -60,6 +80,7 @@ class OskarGui(QtGui.QWidget):
         self.but_save     = QtGui.QPushButton("Save As")
         self.but_open     = QtGui.QPushButton("Open")
         self.lab_nant     = QtGui.QLabel("No. antennas: 0")
+        
         
         self.but_gen.clicked.connect(self.onButGen)
         self.but_save.clicked.connect(self.onButSave)
@@ -70,13 +91,17 @@ class OskarGui(QtGui.QWidget):
         # Create plots
         self.sb_fig, self.sb_ax, self.sb_title = self.createStationPlot()
         
+        
         # generate the canvas to display the plot
-        sb_canvas = FigureCanvas(self.sb_fig)
+        self.sb_canvas = FigureCanvas(self.sb_fig)
+        self.mpl_toolbar = NavigationToolbar(self.sb_canvas, self.main_frame)
         
         # Widget layout
         layout = QtGui.QVBoxLayout()
         
-        layout.addWidget(sb_canvas)
+        
+        layout.addWidget(self.sb_canvas)
+        layout.addWidget(self.mpl_toolbar)
         
         bbox = QtGui.QHBoxLayout()
         bbox.addWidget(self.lab_nant)
@@ -85,17 +110,13 @@ class OskarGui(QtGui.QWidget):
         bbox.addWidget(self.but_gen)
         bbox.addWidget(self.but_save)
         layout.addLayout(bbox)
-
+        
+        
         self.setLayout(layout)    
         
         self.setGeometry(300, 300, width, height)
-        self.setWindowTitle('OSKAR Station Generator')    
+        self.setWindowTitle('OSKAR station tool')    
         self.show()
-        
-
-    ################################
-    ##    ANTENNA CONFIG PLOTS    ##
-    ################################
         
     def createStationPlot(self):
           """ Creates a single pylab plot for antenna layout """
@@ -132,12 +153,6 @@ class OskarGui(QtGui.QWidget):
         self.sb_ax.set_ylabel("Y Position (m)")
         self.lab_nant.setText("No. antennas: %i"%len(x))
         self.sb_fig.canvas.draw()       
-
-
-
-    ##########################
-    ##    BUTTON ACTIONS    ##
-    ##########################
         
     def onButGen(self):
         """ Button action: Generate Station"""
@@ -153,13 +168,7 @@ class OskarGui(QtGui.QWidget):
         fileparts = self.file_dialog.getSaveFileName(caption="Save antenna configuration", filter="Text files (*.txt *.dat *.csv)")
         filename = fileparts[0]
         
-        f = open(filename, 'w')
-        for row in self.ant_coords:
-            f.write("%s,%s\n"%(row[0], row[1]))
-        f.write("\n")   # OSKAR needs trailing newline                
-        f.close()
-        print "Antenna configuration written to %s"%filename
-        
+        saveAntConfig(self.ant_coords, filename)        
                       
     def onButOpen(self):
         """ Button action: Open station file """
@@ -167,7 +176,7 @@ class OskarGui(QtGui.QWidget):
         fileparts = self.file_dialog.getOpenFileName(caption="Select OSKAR antenna configuration file", filter="Text files (*.txt *.dat *.csv)")
         filename = fileparts[0]
         
-        self.ant_coords = np.genfromtxt(filename, delimiter=',')
+        self.ant_coords = openAntConfig(filename)
         self.updatePlot()
 
 
@@ -197,6 +206,7 @@ class generateGui(QtGui.QWidget):
         self.ant_xnum    = QtGui.QLineEdit("4")
         self.ant_ynum    = QtGui.QLineEdit("4")
         self.but_gen     = QtGui.QPushButton("Generate")
+        self.check_taper = QtGui.QCheckBox("Apply taper")
                 
         self.but_gen.clicked.connect(self.onButGen)
         
@@ -214,7 +224,9 @@ class generateGui(QtGui.QWidget):
         cbox.addWidget(QtGui.QLabel("x"))
         cbox.addWidget(self.ant_ynum)
         layout.addLayout(cbox)
-    
+        
+        layout.addWidget(self.check_taper)
+        
         cbox = QtGui.QHBoxLayout()
         cbox.addStretch(1)
         cbox.addWidget(self.but_gen)
@@ -229,21 +241,15 @@ class generateGui(QtGui.QWidget):
     def onButGen(self):
         """ Button action: Generate Station"""
         
-        # This loop is going to be slow - redo with numpy at some stage
-        list_x, list_y = [], []
         ant_xnum = int(self.ant_xnum.text())
         ant_ynum = int(self.ant_ynum.text())
-        ant_spacing = float(self.ant_spacing.text())
+        ant_spacing = float(self.ant_spacing.text())        
         
-        
-        for x in range(0, ant_xnum):
-            for y in range(0, ant_ynum):
-                pos_x = ant_spacing * x
-                pos_y = ant_spacing * y
-                list_x.append(pos_x)
-                list_y.append(pos_y)
-        
-        main_gui.ant_coords = np.column_stack((list_x, list_y))
+        ant_coords = generateGrid(ant_xnum, ant_ynum, ant_spacing)
+        if self.check_taper.isChecked():
+            ant_coords = applyTaper(ant_coords, float(ant_xnum+ant_ynum)/4 * ant_spacing) 
+                                 
+        main_gui.ant_coords = ant_coords
         main_gui.updatePlot()
         self.close()
         
@@ -251,7 +257,7 @@ class generateGui(QtGui.QWidget):
 def main():
     global main_gui
     
-    print "Starting OSKAR Station Generator..."
+    print "Starting OSKAR antenna config tool..."
     app = QtGui.QApplication(sys.argv)
     main_gui = OskarGui()
     app.exec_()
