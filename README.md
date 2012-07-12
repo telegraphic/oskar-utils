@@ -6,7 +6,7 @@ A collection of utilities for use with the OSKAR Aperture Array simulation tool
 
 Requirements
 -------------
-Python (with numpy and matplotlib)
+Python (with numpy and matplotlib > 1.0)
 QT (4.7 or 4.8)
 PySide 1.1
 

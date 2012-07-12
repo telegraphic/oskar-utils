@@ -7,7 +7,9 @@ This script starts a graphical user interface for viewing and generating OSKAR s
 
 Requirements
 ------------
-PySide for Qt4 bindings, numpy, matplotlib.
+Qt4
+PySide 1.1 
+numpy, matplotlib (1.1)
 
 """
 
@@ -18,17 +20,92 @@ __author__  = "Danny Price"
 import sys
 from optparse import OptionParser
 
-from PySide import QtCore, QtGui
-
-import numpy as np
-
+try:
+    from PySide import QtCore, QtGui
+except:
+    print "Error: cannot load PySide. Please check your install."
+    exit()
+try:    
+    import numpy as np
+except:
+    print "Error: cannot load Numpy. Please check your install."
+    exit()
+    
 import matplotlib
-matplotlib.use('Qt4Agg')
-matplotlib.rcParams['backend.qt4']='PySide'
-from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-import matplotlib.gridspec as gridspec
-import pylab as plt
+if matplotlib.__version__ == '0.99.3':
+    print "Error: your matplotlib version is too old to run this. Please upgrade."
+    exit()
+else:
+    matplotlib.use('Qt4Agg')
+    matplotlib.rcParams['backend.qt4']='PySide'
+    from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
+    from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as NavigationToolbar
+    from matplotlib.figure import Figure
+try:
+    import pylab as plt
+except:
+    print "Error: cannot load Pylab. Check your matplotlib install."
+    exit()
+
+###########################
+##   UTILITY FUNCTIONS   ##
+###########################
+
+def generateGrid(ant_xnum, ant_ynum, ant_spacing):
+    """ Generate a rectangular grid of antennas 
+    
+    returns a numpy array of (x,y) antenna coordinates
+    
+    Parameters
+    ----------
+    ant_xnum: int
+        number of antennas across in x-direction
+    ant_ynum: int
+        number of antennas across in y-direction
+    ant_spacing: float
+        spacing between antennas, in metres.
+    """
+    
+    list_x, list_y = [], []
+    
+    # This is a slow implementation, probably a better way to do this than a nested loop
+    for x in range(0, ant_xnum):
+        for y in range(0, ant_ynum):
+            pos_x = ant_spacing * x
+            pos_y = ant_spacing * y
+            list_x.append(pos_x)
+            list_y.append(pos_y)
+    
+    # Centre on (0,0) - this works for both odd and even
+    x = np.array(list_x) - float(ant_xnum)/2  * ant_spacing + 0.5 * ant_spacing
+    y = np.array(list_y) - float(ant_xnum)/2  * ant_spacing + 0.5 * ant_spacing
+        
+    ant_coords = np.column_stack((x, y))
+    
+    return ant_coords
+
+def applyTaper(ant_coords, radius):
+    """ Apply a taper to convert a square antenna grid to be circular
+    
+    Parameters
+    ----------
+    ant_coords: numpy.array
+        an Nx2 numpy array of (x,y) antenna coordinates
+    radius: float
+        a radial distance under which antennas are not removed from grid
+    """
+    
+    x, y = ant_coords[:,0], ant_coords[:,1]
+    z = np.sqrt(x**2 + y**2)
+
+    return ant_coords[z<radius]   
+
+
+
+
+########################
+##   QT GUI WIDGETS   ##
+########################
 
 class OskarGui(QtGui.QWidget):
     """ OSKAR GUI class
@@ -53,6 +130,8 @@ class OskarGui(QtGui.QWidget):
             height of the UI, in pixels. Defaults to 768px
         """
         
+        self.main_frame = QtGui.QWidget()
+        
         self.gen_gui = generateGui()
         
         # Create buttons/widgets
@@ -60,6 +139,7 @@ class OskarGui(QtGui.QWidget):
         self.but_save     = QtGui.QPushButton("Save As")
         self.but_open     = QtGui.QPushButton("Open")
         self.lab_nant     = QtGui.QLabel("No. antennas: 0")
+        
         
         self.but_gen.clicked.connect(self.onButGen)
         self.but_save.clicked.connect(self.onButSave)
@@ -70,13 +150,17 @@ class OskarGui(QtGui.QWidget):
         # Create plots
         self.sb_fig, self.sb_ax, self.sb_title = self.createStationPlot()
         
+        
         # generate the canvas to display the plot
-        sb_canvas = FigureCanvas(self.sb_fig)
+        self.sb_canvas = FigureCanvas(self.sb_fig)
+        self.mpl_toolbar = NavigationToolbar(self.sb_canvas, self.main_frame)
         
         # Widget layout
         layout = QtGui.QVBoxLayout()
         
-        layout.addWidget(sb_canvas)
+        
+        layout.addWidget(self.sb_canvas)
+        layout.addWidget(self.mpl_toolbar)
         
         bbox = QtGui.QHBoxLayout()
         bbox.addWidget(self.lab_nant)
@@ -85,7 +169,8 @@ class OskarGui(QtGui.QWidget):
         bbox.addWidget(self.but_gen)
         bbox.addWidget(self.but_save)
         layout.addLayout(bbox)
-
+        
+        
         self.setLayout(layout)    
         
         self.setGeometry(300, 300, width, height)
@@ -197,6 +282,7 @@ class generateGui(QtGui.QWidget):
         self.ant_xnum    = QtGui.QLineEdit("4")
         self.ant_ynum    = QtGui.QLineEdit("4")
         self.but_gen     = QtGui.QPushButton("Generate")
+        self.check_taper = QtGui.QCheckBox("Apply taper")
                 
         self.but_gen.clicked.connect(self.onButGen)
         
@@ -214,7 +300,9 @@ class generateGui(QtGui.QWidget):
         cbox.addWidget(QtGui.QLabel("x"))
         cbox.addWidget(self.ant_ynum)
         layout.addLayout(cbox)
-    
+        
+        layout.addWidget(self.check_taper)
+        
         cbox = QtGui.QHBoxLayout()
         cbox.addStretch(1)
         cbox.addWidget(self.but_gen)
@@ -229,21 +317,15 @@ class generateGui(QtGui.QWidget):
     def onButGen(self):
         """ Button action: Generate Station"""
         
-        # This loop is going to be slow - redo with numpy at some stage
-        list_x, list_y = [], []
         ant_xnum = int(self.ant_xnum.text())
         ant_ynum = int(self.ant_ynum.text())
-        ant_spacing = float(self.ant_spacing.text())
+        ant_spacing = float(self.ant_spacing.text())        
         
-        
-        for x in range(0, ant_xnum):
-            for y in range(0, ant_ynum):
-                pos_x = ant_spacing * x
-                pos_y = ant_spacing * y
-                list_x.append(pos_x)
-                list_y.append(pos_y)
-        
-        main_gui.ant_coords = np.column_stack((list_x, list_y))
+        ant_coords = generateGrid(ant_xnum, ant_ynum, ant_spacing)
+        if self.check_taper.isChecked():
+            ant_coords = applyTaper(ant_coords, float(ant_xnum)/2 * ant_spacing) 
+                                 
+        main_gui.ant_coords = ant_coords
         main_gui.updatePlot()
         self.close()
         
