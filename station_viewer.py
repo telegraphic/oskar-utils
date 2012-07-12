@@ -72,7 +72,8 @@ class OskarGui(QtGui.QWidget):
             height of the UI, in pixels. Defaults to 768px
         """
         
-        self.main_frame = QtGui.QWidget()    
+        self.main_frame = QtGui.QWidget()
+        
         self.gen_gui = generateGui()
         
         # Create buttons/widgets
@@ -247,7 +248,7 @@ class generateGui(QtGui.QWidget):
         
         ant_coords = generateGrid(ant_xnum, ant_ynum, ant_spacing)
         if self.check_taper.isChecked():
-            ant_coords = applyTaper(ant_coords, float(ant_xnum+ant_ynum)/4 * ant_spacing) 
+            ant_coords = applyTaper(ant_coords, float(ant_xnum)/2 * ant_spacing) 
                                  
         main_gui.ant_coords = ant_coords
         main_gui.updatePlot()
