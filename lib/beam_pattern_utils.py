@@ -22,9 +22,14 @@ def openBeamPattern(filename):
     filename: str
         path to file
     """
+    try:
+        beam = pf.open(filename)
+        return beam  
+    except:
+        print "Error: cannot open %s"%filename
+        raise
+      
     
-    beam = pf.open(filename)
-    return beam
     
 
 

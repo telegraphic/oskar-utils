@@ -57,17 +57,26 @@ except:
 
 from lib.beam_pattern_utils import *
 
+    
+
 class OskarGui(QtGui.QWidget):
     """ OSKAR GUI class
     
     A Qt4 Widget that uses matplotlib to display antenna configurations
+    
+    Parameters
+    ----------
+    filename: str
+        Name of file to open. Defaults to blank, in which case no file is opened.
     """
-    def __init__(self):
+    def __init__(self, filename=''):
         super(OskarGui, self).__init__()
         
         # Initialize user interface
+        self.filename = filename
         self.initUI(width=800, height=800)
-
+        
+       
 
     def initUI(self, width=1024, height=768):
         """ Initialize the User Interface 
@@ -125,6 +134,15 @@ class OskarGui(QtGui.QWidget):
         self.setGeometry(300, 300, width, height)
         self.setWindowTitle('OSKAR beam pattern tool')    
         self.show()
+        
+        # Load file if command line argument is passed
+        if self.filename != '':
+            try:
+                self.beam_data = openBeamPattern(self.filename)
+                self.updatePlot()
+            except:
+                print "Error: cannot open %s"%self.filename
+        
         
     def createBeamPlot(self):
           """ Creates a single pylab plot for displaying a beam pattern """
@@ -200,11 +218,22 @@ class OskarGui(QtGui.QWidget):
 
 
 def main():
-    global main_gui
     
+    # Basic option parsing 
+    p = OptionParser()
+    p.set_usage('beam_pattern_viewer.py [filename] [options]')
+    p.set_description(__doc__)
+    (options, args) = p.parse_args()
+
     print "Starting OSKAR beam pattern tool..."
+    global main_gui
     app = QtGui.QApplication(sys.argv)
-    main_gui = OskarGui()
+    
+    try:
+        filename = args[0]
+        main_gui = OskarGui(filename)
+    except:
+        main_gui = OskarGui()
     app.exec_()
     sys.exit()    
 

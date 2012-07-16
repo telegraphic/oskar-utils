@@ -54,12 +54,12 @@ class OskarGui(QtGui.QWidget):
     
     A Qt4 Widget that uses matplotlib to display antenna configurations
     """
-    def __init__(self):
+    def __init__(self, filename=''):
         super(OskarGui, self).__init__()
         
         # Initialize user interface
+        self.filename = filename
         self.initUI(width=800, height=800)
-
 
     def initUI(self, width=1024, height=768):
         """ Initialize the User Interface 
@@ -118,6 +118,15 @@ class OskarGui(QtGui.QWidget):
         self.setGeometry(300, 300, width, height)
         self.setWindowTitle('OSKAR station tool')    
         self.show()
+        
+        # Load file if command line argument is passed
+        if self.filename != '':
+            try:
+                self.ant_coords = openAntConfig(self.filename)
+                self.updatePlot()
+            except:
+                print "Error: cannot open %s"%self.filename
+        
         
     def createStationPlot(self):
           """ Creates a single pylab plot for antenna layout """
@@ -256,11 +265,21 @@ class generateGui(QtGui.QWidget):
         
 
 def main():
-    global main_gui
+    # Basic option parsing 
+    p = OptionParser()
+    p.set_usage('beam_pattern_viewer.py [filename] [options]')
+    p.set_description(__doc__)
+    (options, args) = p.parse_args()
     
     print "Starting OSKAR antenna config tool..."
+    global main_gui
     app = QtGui.QApplication(sys.argv)
-    main_gui = OskarGui()
+    
+    try:
+        filename = args[0]
+        main_gui = OskarGui(filename)
+    except:
+        main_gui = OskarGui()
     app.exec_()
     sys.exit()    
 
