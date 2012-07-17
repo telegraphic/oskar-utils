@@ -94,13 +94,13 @@ class OskarGui(QtGui.QWidget):
         
         # Create buttons/widgets
         self.but_stats    = QtGui.QPushButton("Statistics")
-        self.but_save     = QtGui.QPushButton("Save As")
+        #self.but_save     = QtGui.QPushButton("Save As")
         self.but_open     = QtGui.QPushButton("Open")
         self.lab_info     = QtGui.QLabel(" ")
         
         
         self.but_stats.clicked.connect(self.onButStats)
-        self.but_save.clicked.connect(self.onButSave)
+        #self.but_save.clicked.connect(self.onButSave)
         self.but_open.clicked.connect(self.onButOpen)
         
         self.beam_data = np.zeros([5,5])
@@ -125,7 +125,7 @@ class OskarGui(QtGui.QWidget):
         bbox.addStretch(1)
         bbox.addWidget(self.but_open)
         bbox.addWidget(self.but_stats)
-        bbox.addWidget(self.but_save)
+        #bbox.addWidget(self.but_save)
         layout.addLayout(bbox)
         
         
@@ -190,15 +190,13 @@ class OskarGui(QtGui.QWidget):
         freq = float(self.beam_data[0].header.get('CRVAL5')) / 1e6
         
         self.lab_info.setText("RA: %2.2f, DEC: %2.2f, FREQ: %2.2fMHz"%(ra, dec, freq))       
-                
-    def onGenGuiClosed(self):
-        """ Close action: Generate Station"""
-        self.updatePlot()
 
     def onButSave(self):
-        """ Button action: Save to file """
+        """ Button action: Save to file 
+        TODO: NOT CURRENTLY IMPLEMENTED
+        """
         self.file_dialog    = QtGui.QFileDialog()
-        fileparts = self.file_dialog.getSaveFileName(caption="Save antenna configuration", filter="Text files (*.txt *.dat *.csv)")
+        fileparts = self.file_dialog.getSaveFileName(caption="Save beam pattern", filter="FITS files (*.fits)")
         filename = fileparts[0]
         
         saveAntConfig(self.ant_coords, filename)        
@@ -206,7 +204,7 @@ class OskarGui(QtGui.QWidget):
     def onButOpen(self):
         """ Button action: Open station file """
         self.file_dialog    = QtGui.QFileDialog()
-        fileparts = self.file_dialog.getOpenFileName(caption="Select OSKAR antenna configuration file", filter="FITS files (*.fits)")
+        fileparts = self.file_dialog.getOpenFileName(caption="Select OSKAR beam pattern file", filter="FITS files (*.fits)")
         filename = fileparts[0]
         
         self.beam_data = openBeamPattern(filename)
