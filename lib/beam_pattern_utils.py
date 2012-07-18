@@ -34,7 +34,6 @@ def openBeamPattern(filename):
         print "Error: cannot open %s"%filename
         raise
 
-
 def findMaxima(beam_data, threshold=0.5, size=10):
     """ Find the local maxima of an array
     
@@ -75,6 +74,7 @@ def findMaxima(beam_data, threshold=0.5, size=10):
     
     return np.column_stack((x,y))
 
+
 def findMainLobe(beam_data):
     """ Find the main lobe of a beam 
     
@@ -99,11 +99,52 @@ def findMainLobe(beam_data):
     return max_loc[np.argmin(dist)]
     
     
+def findFieldOfView(fitsfile):
+    """ Compute the field of view from an OSKAR beampattern fits file
+    
+    returns the field of view as (fov_ra, fov_dec) tuple, in degrees
+    
+    Parameters
+    ----------
+    fitsfile: pyfits fits file object
+        OSKAR beampattern FITS file
+    """
+    
+    header  = fitsfile[0].header     # Open fits file header
+    height  = header.get('NAXIS1')   # Image height, in pixels
+    width   = header.get('NAXIS2')   # Image width, in pixels
+    del_ra  = header.get('CDELT1')   # CDELT1 - RA pixel size at ref 
+    del_dec = header.get('CDELT2')   # CDELt2 - DEC pixel size at ref
+    
+    asin, sin, pi = np.arcsin, np.sin, np.pi
+    fov_arg_ra = -1 * height / 2.0 * sin(del_ra  * pi / 180.0) # Negative convention
+    fov_arg_dec = width / 2.0 * sin(del_ra  * pi / 180.0)
+    
+    # Need to do arcsin to retrieve FoV. Due to fits file rounding the arcsin argument
+    # can be a little over 1.0, so need to check to avoid a NaN being returned
+    if (fov_arg_ra <=1.0):
+        fov_ra = asin(fov_arg_ra) * 360.0/pi
+    elif (1.0 <= fov_arg_ra <=1.001):
+        fov_ra = 180.0
+    else:
+        print "Error: Field of view does not appear to be valid"
+        raise
+    
+    if (fov_arg_ra <=1.0):    
+        fov_dec = asin(fov_arg_dec) * 360.0/pi 
+    elif (1.0 <= fov_arg_ra <=1.001):
+        fov_dec = 180.0
+    else:
+        print "Error: Field of view does not appear to be valid"
+        raise
+
+    return (fov_ra, fov_dec)
+    
 
 def findFWHM(beam_data):
     """ Find the full width half maximum of a beam pattern
     
-    returns the fwhm over x and y axes, as a tuple (fwhm_x, fwhm_y)
+    returns the fwhm over RA and DEC axes, as a tuple (fwhm_ra, fwhm_dec), in degrees
     
     Parameters
     ----------
@@ -115,6 +156,7 @@ def findFWHM(beam_data):
     ml_coords = findMainLobe(beam_data)
     ml_max = beam_data[ml_coords[0], ml_coords[1]]
     ml_3db = ml_max / 2
+
     
     w = 1
     while ml_3db <= beam_data[ml_coords[0]+w, ml_coords[1]]:
@@ -133,24 +175,23 @@ def findFWHM(beam_data):
     w = 1
     while ml_3db <= beam_data[ml_coords[0], ml_coords[1]+w]:
         w +=1
-        if w + ml_coords[0] -1 >= xdim:
+        if w + ml_coords[0] -1 >= ydim:
             break
     y1 = w
 
     w = -1
     while ml_3db <= beam_data[ml_coords[0], ml_coords[1]-w]:
         w -=1
-        if w + ml_coords[0] -1 >= xdim:
+        if w + ml_coords[0] -1 >= ydim:
             break
     y2 = w    
     
-    fwhm_x = np.average([np.abs(x1), np.abs(x2)])
-    fwhm_y = np.average([np.abs(y1), np.abs(y2)])
+    fwhm_ra = 2* np.average([np.abs(x1), np.abs(x2)]) 
+    fwhm_dec = 2* np.average([np.abs(y1), np.abs(y2)]) 
     
-    return (fwhm_x, fwhm_y)
+    return (fwhm_ra, fwhm_dec)
 
-    
-    
+
 def run_tests():
     """ Some test routines for stats """
 
@@ -158,22 +199,29 @@ def run_tests():
     
     # Load test data
     print "\nTesting openBeamPattern()"
-    beam = openBeamPattern('beampattern.fits')
+    beam = openBeamPattern('bp-test2.fits')
     xdim, ydim = beam[0].data.shape[3:]
     beam_data  = beam[0].data[0,0,0]
     print "xdim: %s, ydim: %s"%(xdim, ydim)
 
     print "\nTesting findMaxima()"
-    max_loc = findMaxima(beam_data, size=10, threshold=0.4)    
+    max_loc = findMaxima(beam_data, size=10, threshold=0.4)
+    print "%i local maxima found"%len(max_loc)    
     
     print "\nTesting findMainLobe()"
     ml_coords = findMainLobe(beam_data)
     print "Main lobe coordinates: %s"%ml_coords
 
-    print "\nTesting findFWHM()"
-    fwhm = findFWHM(beam_data)
-    print "FWHM in x-dir: %2.2f, FWHM in y-dir %2.2f"%fwhm
+    print "\nTesting findFieldOfView()"
+    (fov_ra, fov_dec) = findFieldOfView(beam)
+    print "Field of view in RA: %2.2f, DEC: %2.2f"%(fov_ra, fov_dec)
 
+    print "\nTesting findFWHM()"
+    (fwhm_x, fwhm_y) = findFWHM(beam_data)
+    fwhm_ra  = fwhm_x / xdim * fov_ra
+    fwhm_dec = fwhm_y / ydim * fov_dec
+    print "FWHM in RA: %2.2f, FWHM in DEC %2.2f"%(fwhm_ra, fwhm_dec)
+        
     print "\nPlotting results..."
     plt.imshow(beam_data)
     plt.colorbar()
@@ -183,10 +231,10 @@ def run_tests():
     plt.plot(ml_coords[0], ml_coords[1], marker='x', markersize=16, markeredgewidth=1.5, color='#ffffff')
     
     # Draw box around FWHM
-    plt.axvline(ml_coords[0]-fwhm[0], color='#FFFFFF', linestyle='dashed')
-    plt.axvline(ml_coords[0]+fwhm[0], color='#FFFFFF', linestyle='dashed')
-    plt.axhline(ml_coords[1]-fwhm[1], color='#FFFFFF', linestyle='dashed')
-    plt.axhline(ml_coords[1]+fwhm[1], color='#FFFFFF', linestyle='dashed')
+    plt.axvline(ml_coords[0]-fwhm_x/2, color='#FFFFFF', linestyle='dashed')
+    plt.axvline(ml_coords[0]+fwhm_x/2, color='#FFFFFF', linestyle='dashed')
+    plt.axhline(ml_coords[1]-fwhm_y/2, color='#FFFFFF', linestyle='dashed')
+    plt.axhline(ml_coords[1]+fwhm_y/2, color='#FFFFFF', linestyle='dashed')
     
     plt.xlim(0,beam_data.shape[0])
     plt.ylim(0,beam_data.shape[1])
