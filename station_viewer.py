@@ -21,10 +21,13 @@ import sys
 from optparse import OptionParser
 
 try:
-    from PySide import QtCore, QtGui
+    import lib.qt_compat as qt_compat
+    QtCore = qt_compat.QtCore
+    QtGui = qt_compat.import_module("QtGui")
 except:
-    print "Error: cannot load PySide. Please check your install."
+    print "Error: cannot load PySide or PyQt4. Please check your install."
     exit()
+
 try:    
     import numpy as np
 except:
@@ -36,8 +39,12 @@ if matplotlib.__version__ == '0.99.3':
     print "Error: your matplotlib version is too old to run this. Please upgrade."
     exit()
 else:
-    matplotlib.use('Qt4Agg')
-    matplotlib.rcParams['backend.qt4']='PySide'
+    try:
+        matplotlib.use('Qt4Agg')
+        matplotlib.rcParams['backend.qt4']='PySide'
+    except:
+        print "Error: can't configure matplotlib with Qt4Agg. This may not work."
+        pass
     from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
     from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
     from matplotlib.figure import Figure

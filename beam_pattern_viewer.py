@@ -22,9 +22,11 @@ import sys
 from optparse import OptionParser
 
 try:
-    from PySide import QtCore, QtGui
+    import lib.qt_compat as qt_compat
+    QtCore = qt_compat.QtCore
+    QtGui = qt_compat.import_module("QtGui")
 except:
-    print "Error: cannot load PySide. Please check your install."
+    print "Error: cannot load PySide or PyQt4. Please check your install."
     exit()
     
 try:    
