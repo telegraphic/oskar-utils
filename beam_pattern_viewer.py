@@ -175,7 +175,7 @@ class OskarGui(QtGui.QWidget):
         beam_data = self.beam_data[0].data[0,0,0]
         
         
-        plt.imshow(beam_data, interpolation='None')
+        self.sb_plot = plt.imshow(beam_data, interpolation='None')
         
         plt.xlabel(self.beam_data[0].header.get('CTYPE1'))
         plt.ylabel(self.beam_data[0].header.get('CTYPE2'))
@@ -212,7 +212,37 @@ class OskarGui(QtGui.QWidget):
 
     def onButStats(self):
         """ Button action: Open statistics """
-        pass
+        beam_data  = self.beam_data[0].data[0,0,0]
+        xdim, ydim = self.beam_data[0].data.shape[3:]
+        
+        #print "\nTesting findMaxima()"
+        max_loc = findMaxima(beam_data, size=10, threshold=0.4)
+        #print "%i local maxima found"%len(max_loc)    
+
+        ml_coords = findMainLobe(beam_data)
+        (fov_ra, fov_dec) = findFieldOfView(self.beam_data)
+        (fwhm_x, fwhm_y) = findFWHM(beam_data)
+        fwhm_ra  = fwhm_x / xdim * fov_ra
+        fwhm_dec = fwhm_y / ydim * fov_dec
+        
+        print "Main lobe coords: %s"%ml_coords
+        print "FoV  in RA: %2.2fdeg, DEC: %2.2f"%(fov_ra, fov_dec)
+        print "FWHM in RA: %2.2fdeg, DEC: %2.2f"%(fwhm_ra, fwhm_dec)
+        
+        # Overlay location of maxima
+        stat_plot = self.sb_fig.add_subplot(111)
+        stat_plot.plot(max_loc[:,0],max_loc[:,1], 'ro')
+        stat_plot.plot(ml_coords[0], ml_coords[1], marker='x', markersize=16, markeredgewidth=1.5, color='#ffffff')
+    
+        # Draw box around FWHM
+        stat_plot.axvline(ml_coords[0]-fwhm_x/2, color='#FFFFFF', linestyle='dashed')
+        stat_plot.axvline(ml_coords[0]+fwhm_x/2, color='#FFFFFF', linestyle='dashed')
+        stat_plot.axhline(ml_coords[1]-fwhm_y/2, color='#FFFFFF', linestyle='dashed')
+        stat_plot.axhline(ml_coords[1]+fwhm_y/2, color='#FFFFFF', linestyle='dashed')
+    
+        stat_plot.set_xlim(0,beam_data.shape[0])
+        stat_plot.set_ylim(0,beam_data.shape[1])
+        self.sb_fig.canvas.draw()
 
 
 def main():
